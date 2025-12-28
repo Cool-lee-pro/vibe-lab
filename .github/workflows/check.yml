@@ -1,0 +1,28 @@
+name: DDP Stock Checker
+
+on:
+  schedule:
+    # - cron: '*/30 * * * *'  # 30분마다 실행
+    - cron: '0 * * * *'  # 매 정시(1시간 단위)마다 실행
+  workflow_dispatch:        # 수동으로 실행해볼 수 있는 버튼 생성
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Run script
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: python check_stock.py
