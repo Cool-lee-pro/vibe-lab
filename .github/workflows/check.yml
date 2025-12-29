@@ -3,7 +3,7 @@ name: DDP Stock Checker
 on:
   schedule:
     # - cron: '*/30 * * * *'  # 30분마다 실행
-    - cron: '0 * * * *'  # 매 정시(1시간 단위)마다 실행
+    - cron: '7 * * * *'  # 매시 7분마다 실행 (예: 12:07, 13:07...)
   workflow_dispatch:        # 수동으로 실행해볼 수 있는 버튼 생성
 
 jobs:
