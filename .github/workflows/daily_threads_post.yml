@@ -1,0 +1,28 @@
+name: Daily Threads Review Request
+
+on:
+  schedule:
+    - cron: '5 7 * * *' # 매일 KST 16:05 실행 (UTC 07:05)
+  workflow_dispatch:    # 이 설정이 있어야 수동 실행 버튼이 생깁니다!
+
+jobs:
+  test-slack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run script
+        env:
+          SLACK_USER_TOKEN: ${{ secrets.SLACK_USER_TOKEN }}
+          MY_SLACK_ID: ${{ secrets.MY_SLACK_ID }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+        run: python publish_threads.py
