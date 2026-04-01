@@ -75,7 +75,7 @@ def send_individual_draft(tag, contents):
     
     # 헤더와 본문을 확실히 구분하되, 선 대신 공백과 인용구를 활용
     message_text = (
-        f"📅 *{today_str}* |  #{tag}\n"
+        f"📅 *{today_str}* |  `{tag}`\n"
         f"{formatted_contents}"
     )
     
