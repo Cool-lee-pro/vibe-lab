@@ -1,31 +1,22 @@
 import requests
 import os
 import re
+import time
 from datetime import datetime, timedelta
 
+# 환경 변수 설정
 SLACK_TOKEN = os.environ.get('SLACK_USER_TOKEN')
 MY_SLACK_ID = os.environ.get('MY_SLACK_ID')
 CHANNEL_ID = os.environ.get('SLACK_CHANNEL_ID')
 
 def get_recent_messages():
-    # 현재 시각 기준 24시간 전부터 긁어옵니다.
     start_time = (datetime.now() - timedelta(days=1)).timestamp()
-    
-    # [디버깅] 로봇이 지금 어디를 보고 있는지 로그에 출력합니다.
-    print(f"🔍 디버깅: 채널 {CHANNEL_ID}에서 메시지를 찾고 있습니다...")
-    
     url = f"https://slack.com/api/conversations.history?channel={CHANNEL_ID}&oldest={start_time}"
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
-    
     response = requests.get(url, headers=headers).json()
-    if not response.get('ok'):
-        return [], f"슬랙 API 에러: {response.get('error')}"
-    
-    messages = response.get('messages', [])
-    print(f"🔍 디버깅: 해당 채널에서 총 {len(messages)}개의 메시지를 발견했습니다.")
-    return messages, "정상"
+    return response.get('messages', []), "정상" if response.get('ok') else response.get('error')
 
-def format_content(messages):
+def parse_tags(messages):
     organized = {}
     for msg in reversed(messages):
         text = msg.get('text', '')
@@ -35,30 +26,55 @@ def format_content(messages):
                 if tag not in organized: organized[tag] = []
                 clean_text = text.replace(tag, "").strip()
                 if clean_text: organized[tag].append(clean_text)
-    
-    if not organized: return None
-    
-    final_text = f"🗓️ {datetime.now().strftime('%Y-%m-%d')} 기획자 로그\n\n"
-    for tag, contents in organized.items():
-        final_text += f"*{tag}*\n" + "\n".join([f"• {c}" for c in contents]) + "\n\n"
-    return final_text
+    return organized
 
-def send_to_slack(content, is_empty=False):
+def check_approval_and_publish(organized_data):
+    """나에게 온 마지막 DM에 ✅ 반응이 있는지 확인 후 발행"""
+    # 1. 나에게 온 DM 이력 가져오기
+    url = f"https://slack.com/api/conversations.history?channel={MY_SLACK_ID}&limit=5"
+    headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
+    res = requests.get(url, headers=headers).json()
+    
+    if not res.get('ok'): return print(f"❌ DM 확인 실패: {res.get('error')}")
+
+    # 2. 최근 메시지 중 로봇이 보낸 '초안' 메시지 찾기
+    for msg in res.get('messages', []):
+        if "오늘의 초안입니다" in msg.get('text', ''):
+            reactions = msg.get('reactions', [])
+            # ✅(white_check_mark) 반응이 있는지 확인
+            is_approved = any(r.get('name') == 'white_check_mark' for r in reactions)
+            
+            if is_approved:
+                print("✨ 승인 확인! 태그별 발행을 시작합니다.")
+                for tag, contents in organized_data.items():
+                    post_content = f"{tag}\n" + "\n".join([f"• {c}" for c in contents])
+                    
+                    # [중요] 여기에 나중에 Threads API 연동 코드가 들어갑니다!
+                    print(f"🚀 [발행 예정] {post_content}")
+                    
+                    # API 부하 방지를 위한 간격
+                    time.sleep(2)
+                return True
+    
+    print("⏳ 아직 승인(✅)이 되지 않았습니다.")
+    return False
+
+def send_draft(content):
     url = "https://slack.com/api/chat.postMessage"
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
-    
-    message_text = content if content else "📭 기록된 태그 메시지가 없네요!"
-    if not is_empty:
-        message_text = f"🔔 *오늘의 초안입니다.*\n\n---\n{content}"
-
+    message_text = f"🔔 *오늘의 초안입니다.*\n발행하시려면 이 메시지에 ✅ 반응을 달아주세요!\n\n---\n{content}"
     payload = {"channel": MY_SLACK_ID, "text": message_text}
-    res = requests.post(url, headers=headers, json=payload).json()
-    print(f"🔍 디버깅: 메시지 전송 결과 -> {res.get('ok')}")
+    requests.post(url, headers=headers, json=payload)
 
 if __name__ == "__main__":
     msgs, status = get_recent_messages()
-    if status != "정상":
-        send_to_slack(f"❌ 시스템 에러: {status}", is_empty=True)
-    else:
-        content = format_content(msgs)
-        send_to_slack(content, is_empty=(content is None))
+    if status == "정상":
+        data = parse_tags(msgs)
+        if data:
+            # 승인 여부 먼저 체크
+            if not check_approval_and_publish(data):
+                # 승인이 안 되어 있다면 초안 다시 발송 (또는 기존 로직 유지)
+                formatted = ""
+                for tag, contents in data.items():
+                    formatted += f"*{tag}*\n" + "\n".join([f"• {c}" for c in contents]) + "\n\n"
+                send_draft(formatted)
