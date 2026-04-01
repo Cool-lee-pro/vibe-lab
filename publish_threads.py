@@ -4,7 +4,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-# 환경 변수 설정
+# 환경 변수 (기존과 동일)
 SLACK_TOKEN = os.environ.get('SLACK_USER_TOKEN')
 MY_SLACK_ID = os.environ.get('MY_SLACK_ID')
 CHANNEL_ID = os.environ.get('SLACK_CHANNEL_ID')
@@ -28,53 +28,45 @@ def parse_tags(messages):
                 if clean_text: organized[tag].append(clean_text)
     return organized
 
-def check_approval_and_publish(organized_data):
-    """나에게 온 마지막 DM에 ✅ 반응이 있는지 확인 후 발행"""
-    # 1. 나에게 온 DM 이력 가져오기
-    url = f"https://slack.com/api/conversations.history?channel={MY_SLACK_ID}&limit=5"
+def check_and_publish_each(tag, contents):
+    """특정 태그 메시지에 ✅가 있는지 확인하고 발행"""
+    url = f"https://slack.com/api/conversations.history?channel={MY_SLACK_ID}&limit=10"
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
     res = requests.get(url, headers=headers).json()
     
-    if not res.get('ok'): return print(f"❌ DM 확인 실패: {res.get('error')}")
-
-    # 2. 최근 메시지 중 로봇이 보낸 '초안' 메시지 찾기
+    if not res.get('ok'): return
+    
+    # 해당 태그명이 포함된 최근 초안 메시지 찾기
     for msg in res.get('messages', []):
-        if "오늘의 초안입니다" in msg.get('text', ''):
+        if f"[{tag}] 초안입니다" in msg.get('text', ''):
             reactions = msg.get('reactions', [])
-            # ✅(white_check_mark) 반응이 있는지 확인
             is_approved = any(r.get('name') == 'white_check_mark' for r in reactions)
             
             if is_approved:
-                print("✨ 승인 확인! 태그별 발행을 시작합니다.")
-                for tag, contents in organized_data.items():
-                    post_content = f"{tag}\n" + "\n".join([f"• {c}" for c in contents])
-                    
-                    # [중요] 여기에 나중에 Threads API 연동 코드가 들어갑니다!
-                    print(f"🚀 [발행 예정] {post_content}")
-                    
-                    # API 부하 방지를 위한 간격
-                    time.sleep(2)
+                post_body = f"{tag}\n" + "\n".join([f"• {c}" for c in contents])
+                # [Threads API 연동 지점]
+                print(f"🚀 [발행 확정] {tag} 내용을 스레드에 올립니다.")
                 return True
-    
-    print("⏳ 아직 승인(✅)이 되지 않았습니다.")
     return False
 
-def send_draft(content):
+def send_individual_draft(tag, contents):
+    """태그별로 개별 DM 발송"""
     url = "https://slack.com/api/chat.postMessage"
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
-    message_text = f"🔔 *오늘의 초안입니다.*\n발행하시려면 이 메시지에 ✅ 반응을 달아주세요!\n\n---\n{content}"
+    
+    formatted_contents = "\n".join([f"• {c}" for c in contents])
+    message_text = f"🔔 *[{tag}] 초안입니다.*\n발행하시려면 이 메시지에 ✅를 달아주세요!\n\n---\n{formatted_contents}"
+    
     payload = {"channel": MY_SLACK_ID, "text": message_text}
     requests.post(url, headers=headers, json=payload)
 
 if __name__ == "__main__":
     msgs, status = get_recent_messages()
     if status == "정상":
-        data = parse_tags(msgs)
-        if data:
-            # 승인 여부 먼저 체크
-            if not check_approval_and_publish(data):
-                # 승인이 안 되어 있다면 초안 다시 발송 (또는 기존 로직 유지)
-                formatted = ""
-                for tag, contents in data.items():
-                    formatted += f"*{tag}*\n" + "\n".join([f"• {c}" for c in contents]) + "\n\n"
-                send_draft(formatted)
+        tag_data = parse_tags(msgs)
+        for tag, contents in tag_data.items():
+            # 1. 이미 승인된 게 있는지 확인해서 발행
+            if not check_and_publish_each(tag, contents):
+                # 2. 승인 전이라면 개별 초안 발송
+                send_individual_draft(tag, contents)
+                time.sleep(1) # 슬랙 API 부하 방지
