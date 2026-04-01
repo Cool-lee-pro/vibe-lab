@@ -2,10 +2,11 @@ name: Daily Threads Review Request
 
 on:
   schedule:
-    - cron: '5 7 * * *'   # 매일 KST 16:05 (UTC 07:05)
-    - cron: '30 23 * * *'  # 매일 KST 08:30 (UTC 23:30)
-    - cron: '30 00 * * *'  # 매일 KST 09:30 (UTC 00:30)
-  workflow_dispatch: 
+    # 1. 오전 7시 30분 (KST) -> UTC 기준 전날 22:30
+    - cron: '30 22 * * *'
+    # 2. 오후 4시 05분 (KST) -> UTC 기준 당일 07:05
+    - cron: '05 07 * * *'
+  workflow_dispatch: # 이건 '수동 실행' 버튼을 위해 남겨두세요!
 
 env:
   # Node.js 20 만료 경고를 해결하기 위해 최신 버전 사용 강제
