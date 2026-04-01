@@ -61,7 +61,6 @@ def check_and_publish_each(tag, contents):
     return False
 
 def send_individual_draft(tag, contents, start_dt):
-    """가독성을 극대화한 태그별 개별 초안을 나에게 DM으로 보냅니다."""
     url = "https://slack.com/api/chat.postMessage"
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
     
@@ -70,13 +69,16 @@ def send_individual_draft(tag, contents, start_dt):
     start_str = start_dt.strftime('%m-%d %H:%M')
     today_str = now_dt.strftime('%Y-%m-%d')
     
-    # 본문 구성 (인용구 스타일 적용)
+    # 1. 본문만 인용구 스타일 적용
     formatted_contents = "\n".join([f"> • {c}" for c in contents])
     
-    # UI 설계: 날짜 | 태그 | 스크래핑 시간 범위
+    # 2. 기획자님 요청 최종 반영: 
+    # - 태그(#태그)에만 회색 박스(` `) 적용
+    # - 시간 범위는 텍스트로만 표시
+    # - '스크래핑' 문구 삭제
     message_text = (
-        f"📅 *{today_str}* |  `{tag}`\n"
-        f"🕒 `{start_str} ~ {now_str}` 스크래핑\n"
+        f"📅 *{today_str}* | `#{tag}`\n"
+        f"🕒 {start_str} ~ {now_str}\n"
         f"{formatted_contents}"
     )
     
