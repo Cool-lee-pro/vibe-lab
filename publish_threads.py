@@ -69,10 +69,21 @@ def send_individual_draft(tag, contents):
     url = "https://slack.com/api/chat.postMessage"
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
     
+    today_str = datetime.now().strftime('%Y-%m-%d')
     formatted_contents = "\n".join([f"• {c}" for c in contents])
-    message_text = f"🔔 *[{tag}] 초안입니다.*\n발행하시려면 이 메시지에 ✅를 달아주세요!\n\n---\n{formatted_contents}"
     
-    payload = {"channel": MY_SLACK_ID, "text": message_text}
+    # 불필요한 가이드 문구 삭제 및 미니멀한 레이아웃
+    message_text = (
+        f"📅 *{today_str}* | `{tag}`\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"{formatted_contents}"
+    )
+    
+    payload = {
+        "channel": MY_SLACK_ID, 
+        "text": message_text,
+        "mrkdwn": True 
+    }
     requests.post(url, headers=headers, json=payload)
 
 if __name__ == "__main__":
