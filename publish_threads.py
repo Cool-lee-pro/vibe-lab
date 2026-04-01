@@ -60,36 +60,40 @@ def check_and_publish_each(tag, contents):
                 return True
     return False
 
-def send_individual_draft(tag, contents, start_dt):
+def send_combined_report(tag_data, start_dt):
     url = "https://slack.com/api/chat.postMessage"
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
     
-    # KST 시간 환산 (UTC+9)
+    # 1. KST 시간 및 요일 설정
     kst_now = datetime.utcnow() + timedelta(hours=9)
     kst_start = start_dt + timedelta(hours=9)
     
-    now_str = kst_now.strftime('%m-%d %H:%M')
-    start_str = kst_start.strftime('%m-%d %H:%M')
-    today_str = kst_now.strftime('%Y-%m-%d')
+    # 요일 리스트 (월~일)
+    days = ['월', '화', '수', '목', '금', '토', '일']
+    day_name = days[kst_now.weekday()]
     
-    # 1. 공백 제거 포인트: > 뒤에 공백을 넣지 않습니다.
-    # 기존: {f"> • {c}" for c in contents}
-    # 수정: {f">• {c}" for c in contents} -> 불렛 포인트를 바에 딱 붙입니다.
-    formatted_contents = "\n".join([f">• {c}" for c in contents])
+    date_header = kst_now.strftime(f'%Y-%m-%d ({day_name})')
+    time_range = f"{kst_start.strftime('%m-%d %H:%M')} ~ {kst_now.strftime('%m-%d %H:%M')}"
+
+    # 2. 첫 번째 메시지: 📅 날짜와 상단 구분선
+    first_msg = f"📅 {date_header}\n-----------------------"
+    requests.post(url, headers=headers, json={"channel": MY_SLACK_ID, "text": first_msg})
     
-    # 2. 메시지 구성 (기획자님 최종 요청 레이아웃)
-    message_text = (
-        f"📅 *{today_str}* | `{tag}`\n"
-        f"🕒 {start_str} ~ {now_str}\n"
-        f"{formatted_contents}"
-    )
-    
-    payload = {
-        "channel": MY_SLACK_ID, 
-        "text": message_text,
-        "mrkdwn": True 
-    }
-    requests.post(url, headers=headers, json=payload)
+    # 3. 중간 메시지들: 각 태그별 개별 전송 (태그명만 노출)
+    for tag, contents in tag_data.items():
+        clean_tag = tag.replace("#", "")
+        formatted_contents = "\n".join([f"• {c}" for c in contents])
+        
+        # 기획자님 스타일: #태그명 (회색박스 없이 깔끔하게 텍스트만)
+        body_msg = f"#{clean_tag}\n{formatted_contents}"
+        requests.post(url, headers=headers, json={"channel": MY_SLACK_ID, "text": body_msg})
+        time.sleep(0.5) 
+
+    # 4. 마지막 메시지: 하단 구분선과 🕒 시간 범위
+    last_msg = f"-----------------------\n🕒 {time_range}"
+    requests.post(url, headers=headers, json={"channel": MY_SLACK_ID, "text": last_msg})
+
+
 
 if __name__ == "__main__":
     now = datetime.now()
