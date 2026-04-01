@@ -70,12 +70,12 @@ def send_individual_draft(tag, contents):
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
     
     today_str = datetime.now().strftime('%Y-%m-%d')
-    formatted_contents = "\n".join([f"• {c}" for c in contents])
+    # 각 줄 앞에 > 를 붙여 인용구(Blockquote)로 만듭니다.
+    formatted_contents = "\n".join([f"> • {c}" for c in contents])
     
-    # 불필요한 가이드 문구 삭제 및 미니멀한 레이아웃
+    # 헤더와 본문을 확실히 구분하되, 선 대신 공백과 인용구를 활용
     message_text = (
-        f"📅 *{today_str}* | `{tag}`\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📅 *{today_str}* |  #{tag}\n"
         f"{formatted_contents}"
     )
     
