@@ -79,7 +79,7 @@ def send_individual_draft(tag, contents, start_dt):
     
     # 2. 메시지 구성 (기획자님 최종 요청 레이아웃)
     message_text = (
-        f"📅 *{today_str}* | `#{tag}`\n"
+        f"📅 *{today_str}* | `{tag}`\n"
         f"🕒 {start_str} ~ {now_str}\n"
         f"{formatted_contents}"
     )
