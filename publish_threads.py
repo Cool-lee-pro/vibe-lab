@@ -64,20 +64,21 @@ def send_individual_draft(tag, contents, start_dt):
     url = "https://slack.com/api/chat.postMessage"
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
     
-    now_dt = datetime.now()
-    now_str = now_dt.strftime('%m-%d %H:%M')
-    start_str = start_dt.strftime('%m-%d %H:%M')
-    today_str = now_dt.strftime('%Y-%m-%d')
+    # 1. UTC 서버 시간을 KST(UTC+9)로 변환
+    kst_now = datetime.utcnow() + timedelta(hours=9)
+    # start_dt도 UTC 기준일 것이므로 동일하게 9시간을 더해줍니다.
+    kst_start = start_dt + timedelta(hours=9)
     
-    # 1. 본문만 인용구 스타일 적용
+    now_str = kst_now.strftime('%m-%d %H:%M')
+    start_str = kst_start.strftime('%m-%d %H:%M')
+    today_str = kst_now.strftime('%Y-%m-%d')
+    
+    # 2. 본문 인용구 스타일
     formatted_contents = "\n".join([f"> • {c}" for c in contents])
     
-    # 2. 기획자님 요청 최종 반영: 
-    # - 태그(#태그)에만 회색 박스(` `) 적용
-    # - 시간 범위는 텍스트로만 표시
-    # - '스크래핑' 문구 삭제
+    # 3. 최종 메시지 (기획자님 요청 스타일 적용)
     message_text = (
-        f"📅 *{today_str}* | `#{tag}`\n"
+        f"📅 *{today_str}* | `{tag}`\n"
         f"🕒 {start_str} ~ {now_str}\n"
         f"{formatted_contents}"
     )
