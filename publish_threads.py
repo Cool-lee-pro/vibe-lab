@@ -67,7 +67,7 @@ def send_combined_report(tag_data, start_dt, kst_now):
     requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={"channel": MY_SLACK_ID, "text": header})
     
     for tag, contents in tag_data.items():
-        body = f"{tag}\n" + "\n".join([f">• {c}" for c in contents])
+        body = f"`{tag}`\n" + "\n".join([f">• {c}" for c in contents])
         requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={"channel": MY_SLACK_ID, "text": body})
         time.sleep(0.5)
 
