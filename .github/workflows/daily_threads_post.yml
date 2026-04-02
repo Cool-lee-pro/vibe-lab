@@ -14,7 +14,7 @@ on:
     # 4. 오후 16:15 (KST) -> 10분 뒤 "확인 사격" (방금 누른 ✅ 처리)
     - cron: '15 07 * * *'
 
-  workflow_dispatch: # 필요할 땐 언제든 수동 실행!
+  workflow_dispatch: # 수동 실행 버튼
 
 jobs:
   run-bot:
@@ -29,9 +29,13 @@ jobs:
         run: pip install requests
       - name: Run script
         env:
+          # 슬랙 인증 토큰
           SLACK_USER_TOKEN: ${{ secrets.SLACK_USER_TOKEN }}
-          MY_SLACK_ID: ${{ secrets.MY_SLACK_ID }}
+          # [수정됨] 리포트가 전송되고 승인(✅)을 확인할 채널 ID
+          REPORT_CHANNEL_ID: ${{ secrets.REPORT_CHANNEL_ID }}
+          # 원본 로그 데이터가 쌓이는 채널 ID
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          # 스레드 API 관련 환경변수
           THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
         run: python publish_threads.py
