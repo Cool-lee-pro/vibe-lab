@@ -64,7 +64,7 @@ def send_individual_reports(tag_data, kst_start, kst_now):
     
     # 2. 태그별 본문 발송
     for tag, contents in tag_data.items():
-        body = f"{tag}\n" + "\n".join([f"• {c}" for c in contents])
+        body = f"`{tag}`\n" + "\n".join([f"• {c}" for c in contents])
         # 푸터 추가: 구분선과 시간 범위
         footer = f"\n-----------------------\n🕒 {kst_start.strftime('%m/%d %H:%M')} ~ {kst_now.strftime('%m/%d %H:%M')}"
         full_msg = body + footer
