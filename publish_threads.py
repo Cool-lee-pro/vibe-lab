@@ -17,6 +17,7 @@ def post_to_threads(tag, contents):
     thread_text = f"#{clean_tag}\n" + "\n".join([f"• {c}" for c in contents])
     
     try:
+        # STEP 1: 미디어 컨테이너 생성
         c_res = requests.post(f"{base_url}/{THREADS_USER_ID}/threads", params={
             "media_type": "TEXT", "text": thread_text, "access_token": THREADS_ACCESS_TOKEN
         }).json()
@@ -24,6 +25,7 @@ def post_to_threads(tag, contents):
         creation_id = c_res.get('id')
         if not creation_id: return False, c_res
 
+        # STEP 2: 실제 게시 (Publish)
         p_res = requests.post(f"{base_url}/{THREADS_USER_ID}/threads_publish", params={
             "creation_id": creation_id, "access_token": THREADS_ACCESS_TOKEN
         }).json()
@@ -33,6 +35,7 @@ def post_to_threads(tag, contents):
         return False, str(e)
 
 def check_and_publish():
+    # 슬랙 DM에서 ✅ 승인된 건을 찾아 스레드에 발행
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
     res = requests.get(f"https://slack.com/api/conversations.history?channel={MY_SLACK_ID}&limit=20", headers=headers).json()
     
@@ -43,18 +46,21 @@ def check_and_publish():
         ts = msg.get('ts')
         reactions = msg.get('reactions', [])
         
+        # ✅는 있고 🚀(발행완료)는 없는 메시지 탐색
         has_check = any(r.get('name') == 'white_check_mark' for r in reactions)
         has_rocket = any(r.get('name') == 'rocket' for r in reactions)
         
         if has_check and not has_rocket:
+            # 태그명 추출
             tag_match = re.search(r'#([\w가-힣]+)', text)
             if tag_match:
                 tag = tag_match.group(0)
-                # 인용구 스타일(>• ) 제거 로직
-                contents = [l.replace('>• ', '').strip() for l in text.split('\n') if l.startswith('>•')]
+                # 이미지 UI에 맞춰 '• ' 뒤의 내용만 정밀 추출
+                contents = [l.split('• ')[1].strip() for l in text.split('\n') if '• ' in l]
                 
                 success, _ = post_to_threads(tag, contents)
                 if success:
+                    # 발행 성공 시 슬랙에 🚀 달아주기
                     requests.post("https://slack.com/api/reactions.add", headers=headers, 
                                   json={"channel": MY_SLACK_ID, "name": "rocket", "timestamp": ts})
 
