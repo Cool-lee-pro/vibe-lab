@@ -13,29 +13,23 @@ THREADS_ACCESS_TOKEN = os.environ.get('THREADS_ACCESS_TOKEN')
 
 def post_to_threads(tag, contents):
     base_url = "https://graph.threads.net/v1.0"
-    clean_tag = tag.replace("#", "")
+    clean_tag = tag.replace("#", "").replace("`", "") # 백틱 제거
     thread_text = f"#{clean_tag}\n" + "\n".join([f"• {c}" for c in contents])
     try:
-        # 1. 미디어 컨테이너 생성
         c_res = requests.post(f"{base_url}/{THREADS_USER_ID}/threads", params={
             "media_type": "TEXT", "text": thread_text, "access_token": THREADS_ACCESS_TOKEN
         }).json()
-        
         creation_id = c_res.get('id')
-        if not creation_id: 
-            return False, c_res # 실패 시 결과값 반환
-            
-        # 2. 미디어 발행
+        if not creation_id: return False, c_res
         p_res = requests.post(f"{base_url}/{THREADS_USER_ID}/threads_publish", params={
             "creation_id": creation_id, "access_token": THREADS_ACCESS_TOKEN
         }).json()
-        
         return ("id" in p_res), p_res
     except Exception as e:
         return False, {"error": {"message": str(e)}}
 
 def check_and_publish():
-    """✅ 승인된 리포트 메시지를 찾아 발행하고, 실패 시 에러 메시지 전송"""
+    """✅ 승인된 '태그 메시지'만 골라서 발행"""
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
     res = requests.get(f"https://slack.com/api/conversations.history?channel={REPORT_CHANNEL_ID}&limit=50", headers=headers).json()
     if not res.get('ok'): return
@@ -45,63 +39,58 @@ def check_and_publish():
         ts = msg.get('ts')
         reactions = [r.get('name') for r in msg.get('reactions', [])]
         
-        # ✅가 있고 🚀가 없는 태그 메시지 대상
-        if text.startswith("#") and 'white_check_mark' in reactions and 'rocket' not in reactions:
-            # 작업 중 표시 (💬)
+        # 태그(#)로 시작하는 메시지에 ✅가 달렸을 때만 실행
+        if (text.startswith("#") or text.startswith("`#")) and 'white_check_mark' in reactions and 'rocket' not in reactions:
             requests.post("https://slack.com/api/reactions.add", headers=headers, json={"channel": REPORT_CHANNEL_ID, "name": "speech_balloon", "timestamp": ts})
             
             lines = text.strip().split('\n')
-            tag = lines[0].strip()
-            # 구분선(----) 이전의 내용만 추출 (순수 본문)
+            # `#태그` 또는 `#태그` 추출
+            tag = lines[0].strip().replace("`", "")
             contents = [l.replace('• ', '').strip() for l in lines if l.startswith('• ')]
             
             if contents:
                 success, result = post_to_threads(tag, contents)
-                
                 if success:
-                    # 성공 시 로켓(🚀)
                     requests.post("https://slack.com/api/reactions.add", headers=headers, json={"channel": REPORT_CHANNEL_ID, "name": "rocket", "timestamp": ts})
                 else:
-                    # 실패 시 경고(⚠️) 및 에러 메시지 댓글 작성
                     requests.post("https://slack.com/api/reactions.add", headers=headers, json={"channel": REPORT_CHANNEL_ID, "name": "warning", "timestamp": ts})
-                    
-                    # [복구된 로직] 에러 원인 파악 및 슬랙 전송
                     error_info = result.get('error', {})
-                    error_msg = error_info.get('message', '알 수 없는 오류가 발생했습니다.')
-                    error_code = error_info.get('code', 'N/A')
-                    
-                    full_error_text = f"❌ *발행 실패 알림*\n> *사유*: `{error_msg}`\n> *코드*: `{error_code}`"
-                    
                     requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={
-                        "channel": REPORT_CHANNEL_ID, 
-                        "text": full_error_text,
-                        "thread_ts": ts  # 해당 리포트 메시지의 댓글로 달기
+                        "channel": REPORT_CHANNEL_ID, "text": f"❌ *발행 실패*: `{error_info.get('message')}`", "thread_ts": ts
                     })
 
 def send_individual_reports(tag_data, kst_start, kst_now):
-    """구분선과 시간 범위가 포함된 리포트 발송"""
+    """헤더, 태그 메시지, 푸터를 각각 분리해서 발송"""
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
     day_name = ['월','화','수','목','금','토','일'][kst_now.weekday()]
     
-    header = f"📅 {kst_now.strftime('%Y-%m-%d')} ({day_name}) 리포트 \n-----------------------\n"
-    requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={"channel": REPORT_CHANNEL_ID, "text": header})
+    # 1. 헤더 (리포트 시작 알림)
+    header_text = f"📅 *{kst_now.strftime('%Y-%m-%d')} ({day_name}) 리포트 생성* 🚀\n"
+    requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={"channel": REPORT_CHANNEL_ID, "text": header_text})
     
+    # 2. 태그별 개별 메시지 (이 메시지들에 ✅를 다는 겁니다)
     for tag, contents in tag_data.items():
+        # 가독성을 위해 태그에 백틱(`)을 감싸서 발송
         body = f"`{tag}`\n" + "\n".join([f"• {c}" for c in contents])
-        footer = f"\n-----------------------\n🕒 {kst_start.strftime('%m/%d %H:%M')} ~ {kst_now.strftime('%m/%d %H:%M')}"
-        full_msg = body + footer
-        
-        requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={"channel": REPORT_CHANNEL_ID, "text": full_msg})
+        requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={"channel": REPORT_CHANNEL_ID, "text": body})
         time.sleep(0.5)
+
+    # 3. 푸터 (시간 범위 안내)
+    footer_text = (
+        f"-----------------------\n"
+        f"🕒 *수집 범위:* {kst_start.strftime('%m/%d %H:%M')} ~ {kst_now.strftime('%m/%d %H:%M')}\n"
+        f"✅ 발행을 원하는 태그 메시지에 체크 이모지를 달아주세요!"
+    )
+    requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={"channel": REPORT_CHANNEL_ID, "text": footer_text})
 
 if __name__ == "__main__":
     kst_now = datetime.utcnow() + timedelta(hours=9)
     current_hour = kst_now.hour
     
-    # 1. 승인 건 발행 로직 실행
+    # 먼저 승인된 건들 발행 처리
     check_and_publish()
     
-    # 2. 시간 범위 설정
+    # 시간 범위 설정
     if current_hour < 12:
         kst_start = (kst_now - timedelta(days=1)).replace(hour=16, minute=0, second=0, microsecond=0)
     else:
@@ -109,7 +98,7 @@ if __name__ == "__main__":
     
     utc_start_ts = (kst_start - timedelta(hours=9)).timestamp()
     
-    # 3. 새로운 로그 수집 및 리포트 발송
+    # 로그 수집 및 리포트 발송
     url = f"https://slack.com/api/conversations.history?channel={SOURCE_CHANNEL_ID}&oldest={utc_start_ts}"
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
     slack_res = requests.get(url, headers=headers).json()
