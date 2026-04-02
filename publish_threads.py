@@ -4,127 +4,112 @@ import re
 import time
 from datetime import datetime, timedelta
 
-# 1. 환경 변수 설정 (GitHub Secrets에 등록된 값들을 가져옵니다)
+# 1. GitHub Secrets에서 값 가져오기
 SLACK_TOKEN = os.environ.get('SLACK_USER_TOKEN')
 MY_SLACK_ID = os.environ.get('MY_SLACK_ID')
 CHANNEL_ID = os.environ.get('SLACK_CHANNEL_ID')
+THREADS_USER_ID = os.environ.get('THREADS_USER_ID')
+THREADS_ACCESS_TOKEN = os.environ.get('THREADS_ACCESS_TOKEN')
 
-def get_recent_messages(start_timestamp):
-    """지정된 시각 이후의 메시지를 슬랙에서 가져옵니다."""
-    url = f"https://slack.com/api/conversations.history?channel={CHANNEL_ID}&oldest={start_timestamp}"
-    headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
-    response = requests.get(url, headers=headers).json()
+def post_to_threads(tag, contents):
+    """스레드 API 호출 (텍스트 전용)"""
+    base_url = "https://graph.threads.net/v1.0"
+    # 태그에서 # 제거 후 본문 구성
+    clean_tag = tag.replace("#", "")
+    thread_text = f"#{clean_tag}\n" + "\n".join([f"• {c}" for c in contents])
     
-    if not response.get('ok'):
-        return [], response.get('error')
-    return response.get('messages', []), "정상"
+    try:
+        # STEP 1: 컨테이너 생성
+        c_res = requests.post(f"{base_url}/{THREADS_USER_ID}/threads", params={
+            "media_type": "TEXT", "text": thread_text, "access_token": THREADS_ACCESS_TOKEN
+        }).json()
+        
+        creation_id = c_res.get('id')
+        if not creation_id: return False, c_res
 
-def parse_tags(messages):
-    """메시지에서 #태그를 추출하여 태그별로 그룹화합니다."""
-    organized = {}
-    for msg in reversed(messages):
-        text = msg.get('text', '')
-        # 한글, 영문, 숫자 포함된 해시태그 찾기
-        found_tags = re.findall(r'#[\w가-힣]+', text)
-        if found_tags:
-            for tag in found_tags:
-                if tag not in organized:
-                    organized[tag] = []
-                # 본문에서 태그 자체는 제거하고 내용만 정제
-                clean_text = text.replace(tag, "").strip()
-                if clean_text:
-                    organized[tag].append(clean_text)
-    return organized
+        # STEP 2: 게시
+        p_res = requests.post(f"{base_url}/{THREADS_USER_ID}/threads_publish", params={
+            "creation_id": creation_id, "access_token": THREADS_ACCESS_TOKEN
+        }).json()
+        
+        return ("id" in p_res), p_res
+    except Exception as e:
+        return False, str(e)
 
-def check_and_publish_each(tag, contents):
-    """나에게 온 DM 중 해당 태그 초안에 ✅ 반응이 있는지 확인합니다."""
-    url = f"https://slack.com/api/conversations.history?channel={MY_SLACK_ID}&limit=20"
+def check_and_publish():
+    """슬랙 DM에서 ✅ 승인된 건 찾아서 발행"""
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
-    res = requests.get(url, headers=headers).json()
+    res = requests.get(f"https://slack.com/api/conversations.history?channel={MY_SLACK_ID}&limit=20", headers=headers).json()
     
-    if not res.get('ok'):
-        return False
+    if not res.get('ok'): return
     
     for msg in res.get('messages', []):
-        # "[태그명] 초안" 문구가 포함된 로봇의 메시지를 찾습니다.
-        if f"#{tag}" in msg.get('text', '') and "초안" in msg.get('text', ''):
-            reactions = msg.get('reactions', [])
-            # ✅ (white_check_mark) 이모지 확인
-            is_approved = any(r.get('name') == 'white_check_mark' for r in reactions)
-            
-            if is_approved:
-                # ------------------------------------------------------
-                # [STEP 3: Threads API 연동 시 실제 발행 코드가 들어갈 자리]
-                # ------------------------------------------------------
-                print(f"✨ 승인 확인: {tag} 콘텐츠를 스레드 발행 큐에 넣습니다.")
-                return True
-    return False
+        text = msg.get('text', '')
+        ts = msg.get('ts')
+        reactions = msg.get('reactions', [])
+        
+        # ✅는 있고 🚀는 없는 메시지 찾기
+        has_check = any(r.get('name') == 'white_check_mark' for r in reactions)
+        has_rocket = any(r.get('name') == 'rocket' for r in reactions)
+        
+        if has_check and not has_rocket:
+            # 태그 추출 및 본문 파싱
+            tag_match = re.search(r'#([\w가-힣]+)', text)
+            if tag_match:
+                tag = tag_match.group(0)
+                # 인용구 기호 제거하고 내용만 추출
+                contents = [l.replace('>• ', '').strip() for l in text.split('\n') if l.startswith('>•')]
+                
+                success, _ = post_to_threads(tag, contents)
+                if success:
+                    # 성공하면 🚀 이모지 달아주기
+                    requests.post("https://slack.com/api/reactions.add", headers=headers, 
+                                  json={"channel": MY_SLACK_ID, "name": "rocket", "timestamp": ts})
 
 def send_combined_report(tag_data, start_dt):
-    url = "https://slack.com/api/chat.postMessage"
+    """오늘의 통합 리포트 전송 (기획자님 커스텀 UI)"""
     headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
-    
-    # 1. KST 시간 및 요일 설정
     kst_now = datetime.utcnow() + timedelta(hours=9)
     kst_start = start_dt + timedelta(hours=9)
+    day_name = ['월','화','수','목','금','토','일'][kst_now.weekday()]
     
-    # 요일 리스트 (월~일)
-    days = ['월', '화', '수', '목', '금', '토', '일']
-    day_name = days[kst_now.weekday()]
+    # 헤더
+    header = f"📅 {kst_now.strftime('%Y-%m-%d')} ({day_name})\n-----------------------"
+    requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={"channel": MY_SLACK_ID, "text": header})
     
-    date_header = kst_now.strftime(f'%Y-%m-%d ({day_name})')
-    time_range = f"{kst_start.strftime('%m-%d %H:%M')} ~ {kst_now.strftime('%m-%d %H:%M')}"
-
-    # 2. 첫 번째 메시지: 📅 날짜와 상단 구분선
-    first_msg = f"📅 {date_header}\n-----------------------"
-    requests.post(url, headers=headers, json={"channel": MY_SLACK_ID, "text": first_msg})
-    
-    # 3. 중간 메시지들: 각 태그별 개별 전송 (태그명만 노출)
+    # 본문 (태그별 개별 메시지)
     for tag, contents in tag_data.items():
-        clean_tag = tag.replace("#", "")
-        formatted_contents = "\n".join([f"• {c}" for c in contents])
-        
-        # 기획자님 스타일: #태그명 (회색박스 없이 깔끔하게 텍스트만)
-        body_msg = f"#{clean_tag}\n{formatted_contents}"
-        requests.post(url, headers=headers, json={"channel": MY_SLACK_ID, "text": body_msg})
-        time.sleep(0.5) 
+        body = f"{tag}\n" + "\n".join([f">• {c}" for c in contents])
+        requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={"channel": MY_SLACK_ID, "text": body})
+        time.sleep(0.5)
 
-    # 4. 마지막 메시지: 하단 구분선과 🕒 시간 범위
-    last_msg = f"-----------------------\n🕒 {time_range}"
-    requests.post(url, headers=headers, json={"channel": MY_SLACK_ID, "text": last_msg})
-
-
+    # 푸터
+    footer = f"------------------\n🕒 {kst_start.strftime('%m-%d %H:%M')} ~ {kst_now.strftime('%m-%d %H:%M')}"
+    requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={"channel": MY_SLACK_ID, "text": footer})
 
 if __name__ == "__main__":
     now = datetime.now()
-    current_time_num = int(now.strftime('%H%M'))
+    # KST 기준 시간 분할
+    current_time = int(now.strftime('%H%M'))
+    start_dt = now - timedelta(hours=15, minutes=25) if current_time < 1200 else now - timedelta(hours=8, minutes=35)
     
-    # [시간 분할 로직]
-    # 오전 12시 이전 실행(오전 스케줄): 어제 오후 4:05 ~ 현재 (약 15.5시간 전)
-    if current_time_num < 1200:
-        start_dt = now - timedelta(hours=15, minutes=25)
-    # 오전 12시 이후 실행(오후 스케줄): 오늘 오전 7:30 ~ 현재 (약 8.5시간 전)
-    else:
-        start_dt = now - timedelta(hours=8, minutes=35)
+    # 1. 승인된 건 있으면 스레드 발행부터!
+    check_and_publish()
+    
+    # 2. 새로운 기록들 긁어와서 슬랙 리포트 쏘기
+    url = f"https://slack.com/api/conversations.history?channel={CHANNEL_ID}&oldest={start_dt.timestamp()}"
+    headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
+    slack_res = requests.get(url, headers=headers).json()
+    
+    if slack_res.get('ok'):
+        tag_data = {}
+        for msg in reversed(slack_res.get('messages', [])):
+            text = msg.get('text', '')
+            tags = re.findall(r'#[\w가-힣]+', text)
+            for t in tags:
+                if t not in tag_data: tag_data[t] = []
+                clean_txt = text.replace(t, "").strip()
+                if clean_txt: tag_data[t].append(clean_txt)
         
-    print(f"🚀 스크래핑 시작 시각: {start_dt.strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    # 1. 메시지 수집
-    msgs, status = get_recent_messages(start_dt.timestamp())
-    
-    if status == "정상":
-        # 2. 태그별 그룹화
-        tag_data = parse_tags(msgs)
-        
-        if not tag_data:
-            print("📭 해당 시간 범위 내에 태그된 메시지가 없습니다.")
-        else:
-            for tag, contents in tag_data.items():
-                # 3. 승인 여부 체크 (✅가 달려있으면 발행 프로세스 작동)
-                if not check_and_publish_each(tag, contents):
-                    # 4. 승인 전이라면 개별 초안 메시지 발송
-                    send_individual_draft(tag, contents, start_dt)
-                    print(f"📩 [{tag}] 초안 메시지를 보냈습니다.")
-                    time.sleep(1) # API 안정성을 위한 짧은 대기
-    else:
-        print(f"❌ 슬랙 메시지 수집 실패: {status}")
+        if tag_data:
+            send_combined_report(tag_data, start_dt)
