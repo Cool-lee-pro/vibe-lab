@@ -18,16 +18,21 @@ def post_to_threads(tag, contents):
     thread_text = f"#{clean_tag}\n" + "\n".join([f"• {c}" for c in contents])
     
     try:
+        # STEP 1 로그 출력
+        print(f"--- [DEBUG] Posting to Threads: {tag} ---")
         c_res = requests.post(f"{base_url}/{THREADS_USER_ID}/threads", params={
             "media_type": "TEXT", "text": thread_text, "access_token": THREADS_ACCESS_TOKEN
         }).json()
+        print(f"--- [DEBUG] Container Creation Res: {c_res}") # 컨테이너 생성 결과 확인
         
         creation_id = c_res.get('id')
         if not creation_id: return False, c_res
 
+        # STEP 2 로그 출력
         p_res = requests.post(f"{base_url}/{THREADS_USER_ID}/threads_publish", params={
             "creation_id": creation_id, "access_token": THREADS_ACCESS_TOKEN
         }).json()
+        print(f"--- [DEBUG] Publish Res: {p_res}") # 실제 발행 결과 확인
         
         return ("id" in p_res), p_res
     except Exception as e:
