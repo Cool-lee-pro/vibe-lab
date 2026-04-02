@@ -133,4 +133,4 @@ if __name__ == "__main__":
         
         # 3. 새로운 내용이 있을 때만 리포트 전송
         if tag_data:
-            send_
+            send_combined_report(tag_data, start_dt, kst_now)
