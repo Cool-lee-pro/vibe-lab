@@ -1,28 +1,32 @@
-name: Threads Daily Report and Publish
+name: Threads Report and Publish
 
 on:
   schedule:
-    # 1. 오전 07:30 (KST) -> UTC 22:30 (전날)
-    - cron: '30 22 * * *'
-    # 2. 오후 16:05 (KST) -> UTC 07:05 (당일)
+    # --- 오전 세션 ---
+    # 1. 오전 07:30 (KST) -> 리포트 발송 + 기존 승인건 발행
+    - cron: '30 22 * * *' 
+    # 2. 오전 07:40 (KST) -> 10분 뒤 "확인 사격" (방금 누른 ✅ 처리)
+    - cron: '40 22 * * *'
+
+    # --- 오후 세션 ---
+    # 3. 오후 16:05 (KST) -> 리포트 발송 + 오전/낮 승인건 발행
     - cron: '05 07 * * *'
-  workflow_dispatch: # 언제든 수동으로 실행하고 싶을 때 버튼 생성
+    # 4. 오후 16:15 (KST) -> 10분 뒤 "확인 사격" (방금 누른 ✅ 처리)
+    - cron: '15 07 * * *'
+
+  workflow_dispatch: # 필요할 땐 언제든 수동 실행!
 
 jobs:
-  build:
+  run-bot:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
+      - uses: actions/checkout@v3
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-
       - name: Install dependencies
         run: pip install requests
-
       - name: Run script
         env:
           SLACK_USER_TOKEN: ${{ secrets.SLACK_USER_TOKEN }}
