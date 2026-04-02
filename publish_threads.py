@@ -84,7 +84,7 @@ def send_combined_report(tag_data, start_dt):
         time.sleep(0.5)
 
     # 푸터
-    footer = f"------------------\n🕒 {kst_start.strftime('%m-%d %H:%M')} ~ {kst_now.strftime('%m-%d %H:%M')}"
+    footer = f"-----------------------\n🕒 {kst_start.strftime('%m-%d %H:%M')} ~ {kst_now.strftime('%m-%d %H:%M')}"
     requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={"channel": MY_SLACK_ID, "text": footer})
 
 if __name__ == "__main__":
