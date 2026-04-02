@@ -1,26 +1,22 @@
-name: Daily Threads Review Request
+name: Threads Daily Report and Publish
 
 on:
   schedule:
-    # 1. 오전 7시 30분 (KST) -> UTC 기준 전날 22:30
+    # 1. 오전 07:30 (KST) -> UTC 22:30 (전날)
     - cron: '30 22 * * *'
-    # 2. 오후 4시 05분 (KST) -> UTC 기준 당일 07:05
+    # 2. 오후 16:05 (KST) -> UTC 07:05 (당일)
     - cron: '05 07 * * *'
-  workflow_dispatch: # 이건 '수동 실행' 버튼을 위해 남겨두세요!
-
-env:
-  # Node.js 20 만료 경고를 해결하기 위해 최신 버전 사용 강제
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true 
+  workflow_dispatch: # 언제든 수동으로 실행하고 싶을 때 버튼 생성
 
 jobs:
-  run-logger:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
@@ -32,4 +28,6 @@ jobs:
           SLACK_USER_TOKEN: ${{ secrets.SLACK_USER_TOKEN }}
           MY_SLACK_ID: ${{ secrets.MY_SLACK_ID }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
         run: python publish_threads.py
