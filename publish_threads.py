@@ -79,7 +79,7 @@ def send_individual_reports(tag_data, kst_start, kst_now):
     footer_text = (
         f"-----------------------\n"
         f"🕒 *수집 범위:* {kst_start.strftime('%m/%d %H:%M')} ~ {kst_now.strftime('%m/%d %H:%M')}\n"
-        f"✅ 발행을 원하는 태그 메시지에 체크 이모지를 달아주세요!"
+        # f"✅ 발행을 원하는 태그 메시지에 체크 이모지를 달아주세요!"
     )
     requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={"channel": REPORT_CHANNEL_ID, "text": footer_text})
 
